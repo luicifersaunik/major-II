@@ -1,0 +1,11 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+qenn-dashboard/node_modules/
+
+# Local git backup folder
+qenn-dashboard/.git_local_backup/
