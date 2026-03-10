@@ -142,9 +142,6 @@ export default function Dashboard() {
           <h1 style={{margin:0,fontSize:24,fontWeight:800,background:"linear-gradient(90deg,#00f5d4,#3a86ff,#8338ec)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
             QENN vs Classical ENN
           </h1>
-          <p style={{margin:"4px 0 0",color:"#444",fontSize:11}}>
-            Liu &amp; Ma · Information Sciences 598 (2022) · Live results from your results.json
-          </p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {STOCKS.map(s => (
@@ -366,10 +363,8 @@ export default function Dashboard() {
 
       </div>
 
-      <div style={{borderTop:"1px solid #141428",padding:"12px 32px",display:"flex",justifyContent:"space-between",fontSize:11,color:"#333"}}>
-        <span>Liu &amp; Ma · Information Sciences 598 (2022) 75–85</span>
-        <span style={{color:"#00f5d4",fontFamily:"monospace"}}>QENN Implementation · Python + NumPy</span>
-      </div>
+      <div style={{borderTop:"1px solid #141428",padding:"12px 32px"}} />
     </div>
   );
 }
+
