@@ -1,35 +1,53 @@
 """
-run_experiment_fast.py
-Fast version for quick testing — runs in ~20-30 seconds.
-Reduce EPOCHS and dataset size for speed.
+run_experiment_fast.py — Fair Comparison: QENN-Qiskit vs Classical ENN
+Both use Adam optimizer. ENN uses per-size learning rates for stability.
+
+Models:
+  1. QENN-Qiskit  — Qiskit, 5 qubits, CNOT, Adam + SPSA
+  2. ENN-10/20/40/70/100 — Adam optimizer, Xavier init, per-size lr
+
+Setup:
+    pip install numpy pandas qiskit
+
+Run:
+    python run_experiment_fast.py
 """
 
-import json, time, numpy as np
+import json
+import time
+import numpy as np
+
 from data_utils import (
-    generate_synthetic_stock, normalize, denormalize,
+    generate_synthetic_stock,
+    normalize, denormalize,
     sliding_window, train_test_split_sequential,
     nmse, rmse, mae, mape
 )
-from qenn_model import QENN
 from enn_baseline import ENN
 
-# ── Speed settings (change these) ─────────────────────────
-WINDOW   = 6
-EPOCHS   = 30       # was 200 → now 30  (main speedup)
-N_POINTS = 200      # was 600 → now 200 (smaller dataset)
-SEED     = 42
-NH_ENN   = [10, 20 , 40 , 50 , 70] # was [10,20,40,70,100] →   // 5 models
-# ──────────────────────────────────────────────────────────
+# Check Qiskit
+try:
+    from qenn_qiskit import QENN_Qiskit
+    QISKIT_AVAILABLE = True
+    print("Qiskit found — QENN-Qiskit will be included")
+except ImportError:
+    QISKIT_AVAILABLE = False
+    print("Qiskit not found — run: pip install qiskit")
 
-STOCKS = {
-    "BSE":         1,
-    "NASDAQ":      2,
-    "HSI":         3,
-    "SSE":         4,
-    "Russell2000": 5,
-    "TAIEX":       6,
+# ── Configuration ──────────────────────────────────────────────────────────
+WINDOW        = 6
+EPOCHS        = 80     # same for all models — fair comparison
+QISKIT_EPOCHS = 80
+QISKIT_NH     = 5
+SEED          = 42
+NH_ENN        = [10, 20, 40, 70, 100]
+STOCKS        = ["NIFTY", "NASDAQ", "HSI", "SSE", "Russell2000", "TAIEX"]
+SEEDS         = {
+    "NIFTY": 1, "NASDAQ": 2, "HSI": 3,
+    "SSE": 4, "Russell2000": 5, "TAIEX": 6
 }
 
+# ── Helpers ────────────────────────────────────────────────────────────────
 def prepare(series_raw):
     s, xmin, xmax = normalize(series_raw)
     X, y = sliding_window(s, WINDOW)
@@ -42,58 +60,105 @@ def evaluate(model, Xte, yte, xmin, xmax, history):
     pr = denormalize(p,  xmin, xmax)
     yr = denormalize(yf, xmin, xmax)
     return {
-        "nmse": nmse(yf, p), "rmse": rmse(yr, pr),
-        "mae":  mae(yr, pr), "mape": mape(yr, pr),
-        "preds":  pr.tolist(), "actual": yr.tolist(),
-        "train_history": [float(x) for x in history]
+        "nmse":          nmse(yf, p),
+        "rmse":          rmse(yr, pr),
+        "mae":           mae(yr, pr),
+        "mape":          mape(yr, pr),
+        "preds":         [round(float(x), 2) for x in pr],
+        "actual":        [round(float(x), 2) for x in yr],
+        "train_history": [round(float(x), 6) for x in history],
     }
+
+# ── Main ───────────────────────────────────────────────────────────────────
+print("\n" + "="*65)
+print("  FAIR Comparison: QENN-Qiskit vs Classical ENN")
+print(f"  Both use Adam optimizer + Xavier init + gradient clipping")
+print(f"  Data  : Synthetic GBM (400 points, 6 markets)")
+print(f"  Epochs: {EPOCHS} for all models")
+print("="*65)
 
 all_results = {}
 total_start = time.time()
 
-for name, seed in STOCKS.items():
+for name in STOCKS:
+    print(f"\n[{name}]")
     t0 = time.time()
-    print(f"\n[{name}]", end=" ", flush=True)
 
-    series = generate_synthetic_stock(n=N_POINTS, seed=seed).values
+    series = generate_synthetic_stock(n=400, seed=SEEDS[name]).values
     Xtr, ytr, Xte, yte, xmin, xmax = prepare(series)
+    print(f"  Train={len(Xtr)}  Test={len(Xte)}")
 
     sr = {
-        "series":  series.tolist(),
-        "x_min":   float(xmin),
-        "x_max":   float(xmax),
-        "n_train": len(Xtr),
-        "n_test":  len(Xte),
-        "models":  {}
+        "series":      [round(float(x), 2) for x in series[-80:]],
+        "x_min":       float(xmin),
+        "x_max":       float(xmax),
+        "n_train":     len(Xtr),
+        "n_test":      len(Xte),
+        "data_source": "synthetic (GBM)",
+        "models":      {}
     }
 
-    # QENN
-    print("QENN", end="...", flush=True)
-    q = ENN(ni=WINDOW, nh=5, no=1, c=0.5, lr=8e-4, seed=SEED)
-    h = q.train(Xtr, ytr, epochs=EPOCHS)
-    sr["models"]["QENN"] = evaluate(q, Xte, yte, xmin, xmax, h)
+    # ── QENN-Qiskit ───────────────────────────────────────────────
+    if QISKIT_AVAILABLE:
+        print(f"  QENN-Qiskit  (5 qubits, Adam+SPSA)...", end=" ", flush=True)
+        t1 = time.time()
+        qk = QENN_Qiskit(ni=WINDOW, nh=QISKIT_NH, no=1, c=0.5, seed=SEED)
+        h  = qk.train(Xtr, ytr, epochs=QISKIT_EPOCHS)
+        sr["models"]["QENN-Qiskit"] = evaluate(qk, Xte, yte, xmin, xmax, h)
+        sr["models"]["QENN-Qiskit"]["time"] = round(time.time()-t1, 1)
+        print(f"NMSE={sr['models']['QENN-Qiskit']['nmse']:.4f}  "
+              f"({sr['models']['QENN-Qiskit']['time']}s)")
 
-    # Classical ENNs
+    # ── Classical ENN (Adam, per-size lr) ─────────────────────────
     for nh in NH_ENN:
-        print(f"ENN-{nh}", end="...", flush=True)
-        e = ENN(ni=WINDOW, nh=nh, no=1, lr=1e-3, seed=SEED)
+        print(f"  ENN-{nh:<3}      (Adam, auto-lr)...", end=" ", flush=True)
+        t1 = time.time()
+        # lr=None → ENN auto-selects stable lr for this network size
+        e = ENN(ni=WINDOW, nh=nh, no=1, c=0.0, lr=None, seed=SEED)
         h = e.train(Xtr, ytr, epochs=EPOCHS)
-        sr["models"][f"ENN-{nh}"] = evaluate(e, Xte, yte, xmin, xmax, h)
+        k = f"ENN-{nh}"
+        sr["models"][k] = evaluate(e, Xte, yte, xmin, xmax, h)
+        sr["models"][k]["time"] = round(time.time()-t1, 1)
+        print(f"NMSE={sr['models'][k]['nmse']:.4f}  "
+              f"({sr['models'][k]['time']}s)")
 
-    print(f"✓  ({time.time()-t0:.1f}s)")
+    print(f"  [{name} done in {time.time()-t0:.1f}s]")
     all_results[name] = sr
 
+# ── Save ───────────────────────────────────────────────────────────────────
 with open("results.json", "w") as f:
     json.dump(all_results, f, indent=2)
 
-print(f"\n✅ Done in {time.time()-total_start:.1f}s  →  results.json saved")
-print("\nNMSE Summary:")
+print(f"\n{'='*65}")
+print(f"  Total: {time.time()-total_start:.1f}s  →  results.json saved")
+print(f"  Next : copy results.json qenn-dashboard\\public\\results.json")
+print(f"{'='*65}")
+
+# ── NMSE Summary ──────────────────────────────────────────────────────────
+models = (["QENN-Qiskit"] if QISKIT_AVAILABLE else []) + \
+         [f"ENN-{n}" for n in NH_ENN]
+
+print(f"\nFAIR NMSE Summary (* = best per market):\n")
 print(f"{'Market':<14}", end="")
-for m in ["QENN"] + [f"ENN-{n}" for n in NH_ENN]:
-    print(f"{m:>10}", end="")
+for m in models:
+    print(f"{m:>13}", end="")
 print()
+print("-" * (14 + 13*len(models)))
+
 for name, data in all_results.items():
+    vals  = {m: data["models"].get(m, {}).get("nmse") for m in models}
+    valid = [v for v in vals.values() if v is not None]
+    best  = min(valid) if valid else None
     print(f"{name:<14}", end="")
-    for m in ["QENN"] + [f"ENN-{n}" for n in NH_ENN]:
-        print(f"{data['models'][m]['nmse']:>10.4f}", end="")
+    for m in models:
+        v = vals[m]
+        if v is None:
+            print(f"{'—':>13}", end="")
+        elif v == best:
+            print(f"{'*'+f'{v:.4f}':>13}", end="")
+        else:
+            print(f"{v:>13.4f}", end="")
     print()
+
+print("\n* = best NMSE for that market")
+print("\nFair comparison: all models use Adam optimizer + Xavier init + gradient clipping")

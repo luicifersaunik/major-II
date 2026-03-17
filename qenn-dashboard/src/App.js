@@ -2,19 +2,20 @@ import { useState, useEffect } from "react";
 import {
   LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis
 } from "recharts";
 
-const MODELS = ["QENN", "ENN-10", "ENN-20", "ENN-40", "ENN-70", "ENN-100"];
-const MODEL_COLORS = {                                                                        
-  "QENN":    "#00f5d4",
-  "ENN-10":  "#f72585",
-  "ENN-20":  "#fb8500",
-  "ENN-40":  "#8338ec",
-  "ENN-70":  "#3a86ff",
-  "ENN-100": "#06d6a0"
+const MODELS = ["QENN-Qiskit", "ENN-10", "ENN-20", "ENN-40", "ENN-70", "ENN-100"];
+const MODEL_COLORS = {
+  "QENN-Qiskit": "#ff006e",
+  "ENN-10":      "#f72585",
+  "ENN-20":      "#fb8500",
+  "ENN-40":      "#8338ec",
+  "ENN-70":      "#3a86ff",
+  "ENN-100":     "#06d6a0"
 };
 const STOCK_LABELS = {
-  BSE:"Bombay SE", NASDAQ:"NASDAQ", HSI:"Hang Seng",
+  NIFTY:"Nifty 50", NASDAQ:"NASDAQ", HSI:"Hang Seng",
   SSE:"Shanghai", Russell2000:"Russell 2000", TAIEX:"TAIEX"
 };
 
@@ -47,11 +48,10 @@ export default function Dashboard() {
   const [DATA, setDATA]               = useState(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
-  const [activeStock, setActiveStock] = useState("BSE");
+  const [activeStock, setActiveStock] = useState("NIFTY");
   const [activeTab, setActiveTab]     = useState("overview");
   const [selectedModel, setSelectedModel] = useState("ENN-10");
 
-  // ── Load results.json from public folder ──────────────────────────────
   useEffect(() => {
     fetch("/results.json")
       .then(r => {
@@ -59,7 +59,6 @@ export default function Dashboard() {
         return r.json();
       })
       .then(json => {
-        // Normalise: support both flat {nmse,preds,...} and nested {models:{...}}
         const normalised = {};
         for (const [stock, val] of Object.entries(json)) {
           if (val.models) {
@@ -79,10 +78,9 @@ export default function Dashboard() {
       });
   }, []);
 
-  // ── Loading / error screens ───────────────────────────────────────────
   if (loading) return (
     <div style={{minHeight:"100vh",background:"#060610",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
-      <div style={{width:40,height:40,border:"3px solid #1e1e3a",borderTop:"3px solid #00f5d4",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+      <div style={{width:40,height:40,border:"3px solid #1e1e3a",borderTop:"3px solid #ff006e",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
       <p style={{color:"#444",fontFamily:"monospace"}}>Loading results.json…</p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -94,31 +92,29 @@ export default function Dashboard() {
       <p style={{color:"#f72585",fontFamily:"monospace",fontSize:14}}>{error}</p>
       <div style={{background:"#0a0a1a",border:"1px solid #2a2a4a",borderRadius:12,padding:24,maxWidth:500,fontSize:12,color:"#888",lineHeight:1.8}}>
         <p style={{color:"#fff",marginBottom:12,fontWeight:700}}>Fix: Copy results.json to the public folder</p>
-        <p>1. Run <code style={{color:"#00f5d4"}}>python run_experiment_fast.py</code> to generate results.json</p>
-        <p>2. Copy <code style={{color:"#00f5d4"}}>results.json</code> into <code style={{color:"#00f5d4"}}>qenn-dashboard/public/</code></p>
+        <p>1. Run <code style={{color:"#ff006e"}}>python run_experiment_fast.py</code></p>
+        <p>2. Copy <code style={{color:"#ff006e"}}>results.json</code> into <code style={{color:"#ff006e"}}>qenn-dashboard/public/</code></p>
         <p>3. Refresh this page</p>
       </div>
     </div>
   );
 
-  const STOCKS       = Object.keys(DATA);
-  const stockData    = DATA[activeStock] ?? {};
-  const availModels  = MODELS.filter(m => stockData[m]);
-  const qenn         = stockData["QENN"];
-  const bestENN      = Math.min(...availModels.filter(m => m !== "QENN").map(m => stockData[m]?.nmse ?? 9));
+  const STOCKS      = Object.keys(DATA);
+  const stockData   = DATA[activeStock] ?? {};
+  const availModels = MODELS.filter(m => stockData[m]);
+  const qiskit      = stockData["QENN-Qiskit"];
+  const bestENN     = Math.min(...availModels.filter(m => m !== "QENN-Qiskit").map(m => stockData[m]?.nmse ?? 9));
 
-  // prediction chart
-  const compareModel = availModels.includes(selectedModel) ? selectedModel : availModels.find(m => m !== "QENN") ?? "ENN-10";
-  const predLen      = Math.min(qenn?.preds?.length ?? 0, stockData[compareModel]?.preds?.length ?? 0);
+  const compareModel = availModels.includes(selectedModel) ? selectedModel : availModels.find(m => m !== "QENN-Qiskit") ?? "ENN-10";
+  const predLen      = Math.min(qiskit?.preds?.length ?? 0, stockData[compareModel]?.preds?.length ?? 0);
   const predData     = Array.from({length: predLen}, (_, i) => ({
     day:    i + 1,
-    Actual: qenn?.actual?.[i] ?? null,
-    QENN:   qenn?.preds?.[i]  ?? null,
+    Actual: qiskit?.actual?.[i] ?? null,
+    "QENN-Qiskit": qiskit?.preds?.[i] ?? null,
     [compareModel]: stockData[compareModel]?.preds?.[i] ?? null,
   }));
 
-  // training convergence
-  const convLen  = Math.min(...availModels.map(m => stockData[m]?.train_history?.length ?? 0));
+  const convLen  = availModels.length > 0 ? Math.min(...availModels.map(m => stockData[m]?.train_history?.length ?? 0)) : 0;
   const convData = convLen > 0
     ? Array.from({length: convLen}, (_, i) => ({
         epoch: i,
@@ -136,50 +132,56 @@ export default function Dashboard() {
   return (
     <div style={{minHeight:"100vh",background:"#060610",fontFamily:"'Inter',sans-serif",color:"#e0e0e0"}}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{background:"linear-gradient(135deg,#0a0a1f,#0d0d28)",borderBottom:"1px solid #1a1a3a",padding:"20px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h1 style={{margin:0,fontSize:24,fontWeight:800,background:"linear-gradient(90deg,#00f5d4,#3a86ff,#8338ec)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
-            QENN vs Classical ENN
+          <h1 style={{margin:0,fontSize:24,fontWeight:800,background:"linear-gradient(90deg,#ff006e,#3a86ff,#8338ec)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            QENN-Qiskit vs Classical ENN
           </h1>
+          <p style={{margin:"4px 0 0",color:"#444",fontSize:11}}>
+            Liu &amp; Ma · Information Sciences 598 (2022) · Qiskit Statevector Simulator · 5 Qubits · CNOT Entanglement
+          </p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {STOCKS.map(s => (
             <button key={s} onClick={() => setActiveStock(s)} style={{
               padding:"6px 14px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer",
-              background: activeStock===s ? "#00f5d4" : "transparent",
-              color:      activeStock===s ? "#060610" : "#666",
-              border:`1px solid ${activeStock===s ? "#00f5d4" : "#2a2a4a"}`,
+              background: activeStock===s ? "#ff006e" : "transparent",
+              color:      activeStock===s ? "#fff" : "#666",
+              border:`1px solid ${activeStock===s ? "#ff006e" : "#2a2a4a"}`,
             }}>{STOCK_LABELS[s] ?? s}</button>
           ))}
         </div>
       </div>
 
-      {/* ── Tabs ── */}
+      {/* Tabs */}
       <div style={{display:"flex",borderBottom:"1px solid #1a1a3a",background:"#080814",padding:"0 32px"}}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
             padding:"11px 18px",background:"none",border:"none",cursor:"pointer",fontSize:12,fontWeight:500,
-            color: activeTab===t.id ? "#00f5d4" : "#555",
-            borderBottom: activeTab===t.id ? "2px solid #00f5d4" : "2px solid transparent",
+            color: activeTab===t.id ? "#ff006e" : "#555",
+            borderBottom: activeTab===t.id ? "2px solid #ff006e" : "2px solid transparent",
           }}>{t.label}</button>
         ))}
       </div>
 
       <div style={{padding:"24px 32px"}}>
 
-        {/* ══ OVERVIEW ══ */}
+        {/* OVERVIEW */}
         {activeTab==="overview" && (
           <div>
             <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-              <MetricCard label="QENN NMSE"  value={qenn?.nmse} />
-              <MetricCard label="Best ENN"   value={bestENN} />
-              <MetricCard label="QENN RMSE"  value={qenn?.rmse} />
-              <MetricCard label="QENN MAPE"  value={qenn?.mape} unit="%" />
+              <MetricCard label="QENN-Qiskit NMSE" value={qiskit?.nmse} />
+              <MetricCard label="Best ENN NMSE"    value={bestENN} />
+              <MetricCard label="QENN-Qiskit RMSE" value={qiskit?.rmse} />
+              <MetricCard label="QENN-Qiskit MAPE" value={qiskit?.mape} unit="%" />
             </div>
 
             <div style={{background:"#0a0a1a",border:"1px solid #1e1e3a",borderRadius:12,padding:"20px",marginBottom:16}}>
-              <div style={{marginBottom:12,fontSize:13,fontWeight:700}}>NMSE Comparison — {STOCK_LABELS[activeStock] ?? activeStock}</div>
+              <div style={{marginBottom:12,fontSize:13,fontWeight:700}}>
+                NMSE Comparison — {STOCK_LABELS[activeStock] ?? activeStock}
+                <span style={{fontSize:10,color:"#444",marginLeft:12}}>Lower is better · QENN-Qiskit uses 5 qubits + CNOT entanglement</span>
+              </div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={availModels.map(m => ({model:m, nmse:stockData[m]?.nmse??0}))} margin={{top:5,right:10,left:-10,bottom:5}}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1a1a2e" vertical={false}/>
@@ -193,7 +195,6 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Summary table */}
             <div style={{background:"#0a0a1a",border:"1px solid #1e1e3a",borderRadius:12,padding:"20px",overflowX:"auto"}}>
               <div style={{marginBottom:12,fontSize:13,fontWeight:700}}>All Markets — NMSE Summary</div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -215,7 +216,7 @@ export default function Dashboard() {
                         <td style={{padding:"8px 12px",color:"#aaa",fontWeight:600}}>{STOCK_LABELS[s]??s}</td>
                         {availModels.map((m,i) => (
                           <td key={m} style={{textAlign:"center",padding:"8px 12px",
-                            color: vals[i]===best ? "#00f5d4":"#666",
+                            color: vals[i]===best ? "#ff006e":"#666",
                             fontWeight: vals[i]===best ? 700:400,
                             fontFamily:"monospace",fontSize:11}}>
                             {vals[i]===Infinity ? "—" : vals[i].toFixed(4)}
@@ -231,12 +232,12 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ══ PREDICTIONS ══ */}
+        {/* PREDICTIONS */}
         {activeTab==="prediction" && (
           <div>
             <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
-              <span style={{color:"#555",fontSize:12}}>Compare QENN vs:</span>
-              {availModels.filter(m => m!=="QENN").map(m => (
+              <span style={{color:"#555",fontSize:12}}>Compare QENN-Qiskit vs:</span>
+              {availModels.filter(m => m!=="QENN-Qiskit").map(m => (
                 <button key={m} onClick={() => setSelectedModel(m)} style={{
                   padding:"5px 14px",borderRadius:16,fontSize:11,cursor:"pointer",
                   background: compareModel===m ? MODEL_COLORS[m]+"33":"transparent",
@@ -259,8 +260,8 @@ export default function Dashboard() {
                     <Tooltip content={<CustomTooltip/>}/>
                     <Legend wrapperStyle={{fontSize:11}}/>
                     <Line type="monotone" dataKey="Actual"       stroke="#ffffff" strokeWidth={2} dot={false} strokeDasharray="6 3"/>
-                    <Line type="monotone" dataKey="QENN"         stroke="#00f5d4" strokeWidth={2} dot={false}/>
-                    <Line type="monotone" dataKey={compareModel} stroke={MODEL_COLORS[compareModel]??"#f72585"} strokeWidth={2} dot={false}/>
+                    <Line type="monotone" dataKey="QENN-Qiskit"  stroke="#ff006e" strokeWidth={2} dot={false}/>
+                    <Line type="monotone" dataKey={compareModel} stroke={MODEL_COLORS[compareModel]??"#888"} strokeWidth={2} dot={false}/>
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -291,7 +292,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ══ TRAINING ══ */}
+        {/* TRAINING */}
         {activeTab==="training" && (
           <div style={{background:"#0a0a1a",border:"1px solid #1e1e3a",borderRadius:12,padding:"20px"}}>
             <div style={{marginBottom:12,fontSize:13,fontWeight:700}}>Training Convergence — {STOCK_LABELS[activeStock]??activeStock}</div>
@@ -305,22 +306,22 @@ export default function Dashboard() {
                   <Legend wrapperStyle={{fontSize:11}}/>
                   {availModels.map(m => (
                     <Line key={m} type="monotone" dataKey={m}
-                      stroke={MODEL_COLORS[m]??"#888"}
-                      strokeWidth={m==="QENN"?2.5:1.5}
+                      stroke={MODEL_COLORS[m] ?? "#888"}
+                      strokeWidth={m==="QENN-Qiskit" ? 2.5 : 1.5}
                       dot={false}
-                      strokeDasharray={m==="QENN"?"none":"4 2"}/>
+                      strokeDasharray={m==="QENN-Qiskit" ? "none" : "4 2"}/>
                   ))}
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <div style={{height:340,display:"flex",alignItems:"center",justifyContent:"center",color:"#444"}}>
-                No training history in results.json
+                No training history available
               </div>
             )}
           </div>
         )}
 
-        {/* ══ HEATMAP ══ */}
+        {/* HEATMAP */}
         {activeTab==="heatmap" && (
           <div style={{background:"#0a0a1a",border:"1px solid #1e1e3a",borderRadius:12,padding:"20px",overflowX:"auto"}}>
             <div style={{marginBottom:14,fontSize:13,fontWeight:700}}>NMSE Heatmap — All Markets × All Models</div>
@@ -363,8 +364,10 @@ export default function Dashboard() {
 
       </div>
 
-      <div style={{borderTop:"1px solid #141428",padding:"12px 32px"}} />
+      <div style={{borderTop:"1px solid #141428",padding:"12px 32px",display:"flex",justifyContent:"space-between",fontSize:11,color:"#333"}}>
+        <span>Liu &amp; Ma · Information Sciences 598 (2022) 75–85</span>
+        <span style={{color:"#ff006e",fontFamily:"monospace"}}>QENN-Qiskit · 5 Qubits · CNOT Entanglement · SPSA + Adam</span>
+      </div>
     </div>
   );
 }
-
