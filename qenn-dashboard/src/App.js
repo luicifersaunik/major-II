@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis
 } from "recharts";
 
 const MODELS = ["QENN-Qiskit", "ENN-10", "ENN-20", "ENN-40", "ENN-70", "ENN-100"];
